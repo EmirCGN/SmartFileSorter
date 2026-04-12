@@ -1,21 +1,10 @@
-//
-//  ContentView.swift
-//  SmartFileSorter
-//
-//  Created by Emir Köroglu on 11.04.26.
-//
-
 import SwiftUI
 
 struct ContentView: View {
+    @State private var viewModel = MainViewModel()
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
+        MainWindowView(viewModel: viewModel)
     }
 }
 
