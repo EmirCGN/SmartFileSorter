@@ -6,7 +6,7 @@ struct SettingsPanelView: View {
     var body: some View {
         InfoCard(title: "Einstellungen", systemImage: "slider.horizontal.3") {
             VStack(alignment: .leading, spacing: 10) {
-                SettingRow(title: "Dry Run", subtitle: "Nur planen, nichts verschieben", isOn: $viewModel.settings.dryRun)
+                SettingRow(title: "Sicherer Modus", subtitle: "Erst planen, dann Verschiebungen bestätigen", isOn: $viewModel.settings.dryRun)
                 SettingRow(title: "Versteckte Dateien ignorieren", subtitle: ".DS_Store und Punktdateien auslassen", isOn: $viewModel.settings.ignoreHiddenFiles)
                 SettingRow(title: "Unterordner ignorieren", subtitle: "Nur die erste Ordnerebene scannen", isOn: $viewModel.settings.ignoreSubfolders)
                 SettingRow(title: "Konflikte lösen", subtitle: "Namen automatisch durchnummerieren", isOn: $viewModel.settings.resolveConflictsAutomatically)

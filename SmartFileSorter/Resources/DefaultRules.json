@@ -1,0 +1,10 @@
+{
+  "categories": [
+    { "id": "images", "folderName": "Bilder", "extensions": ["jpg", "jpeg", "png", "gif", "heic", "webp", "tiff", "bmp", "svg"] },
+    { "id": "documents", "folderName": "Dokumente", "extensions": ["pdf", "doc", "docx", "txt", "rtf", "md", "pages", "numbers", "key", "xls", "xlsx", "ppt", "pptx", "csv"] },
+    { "id": "archives", "folderName": "Archive", "extensions": ["zip", "rar", "7z", "tar", "gz", "bz2", "xz"] },
+    { "id": "audio", "folderName": "Audio", "extensions": ["mp3", "m4a", "wav", "aiff", "flac", "aac", "ogg"] },
+    { "id": "videos", "folderName": "Videos", "extensions": ["mp4", "mov", "m4v", "avi", "mkv", "webm"] },
+    { "id": "apps", "folderName": "Apps", "extensions": ["app", "dmg", "pkg"] }
+  ]
+}

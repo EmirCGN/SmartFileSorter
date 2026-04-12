@@ -34,6 +34,13 @@
 			children = (
 				2DF0E9ED2F8AE76300F97A62 /* SmartFileSorter */,
 				2DF0E9EC2F8AE76300F97A62 /* Products */,
+				2DF0E9F92F8AE93400F97A62 /* App */,
+				2DF0E9FA2F8AE93400F97A62 /* Models */,
+				2DF0E9FB2F8AE93400F97A62 /* ViewModels */,
+				2DF0E9FC2F8AE93400F97A62 /* Views */,
+				2DF0E9FE2F8AE93500F97A62 /* Core */,
+				2DF0E9FF2F8AE93500F97A62 /* Services */,
+				2DF0EA002F8AE93500F97A62 /* Resources */,
 			);
 			sourceTree = "<group>";
 		};
@@ -43,6 +50,63 @@
 				2DF0E9EB2F8AE76300F97A62 /* SmartFileSorter.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		2DF0E9F92F8AE93400F97A62 /* App */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		2DF0E9FA2F8AE93400F97A62 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		2DF0E9FB2F8AE93400F97A62 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		2DF0E9FC2F8AE93400F97A62 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				2DF0E9FD2F8AE93500F97A62 /* Components */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		2DF0E9FD2F8AE93500F97A62 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		2DF0E9FE2F8AE93500F97A62 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		2DF0E9FF2F8AE93500F97A62 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		2DF0EA002F8AE93500F97A62 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -253,7 +317,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -283,7 +347,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (

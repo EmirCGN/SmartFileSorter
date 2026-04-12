@@ -18,7 +18,7 @@ struct FileMover {
 
         let targetFolderURL = sourceFolderURL.appendingPathComponent(item.category.folderName, isDirectory: true)
         let proposedURL = targetFolderURL.appendingPathComponent(item.originalName)
-        let destinationURL = settings.resolveConflictsAutomatically ? conflictResolver.resolvedURL(for: proposedURL) : proposedURL
+        let destinationURL = item.destinationURL ?? (settings.resolveConflictsAutomatically ? conflictResolver.resolvedURL(for: proposedURL) : proposedURL)
         updatedItem.destinationURL = destinationURL
 
         if settings.dryRun {

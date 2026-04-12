@@ -36,6 +36,9 @@ struct MainWindowView: View {
             .padding(22)
         }
         .frame(minWidth: 940, minHeight: 660)
+        .sheet(isPresented: $viewModel.isShowingSortConfirmation) {
+            SafeSortConfirmationView(viewModel: viewModel)
+        }
     }
 
     private var header: some View {
@@ -82,7 +85,7 @@ struct MainWindowView: View {
                 Task { await viewModel.analyzeSelectedFolder() }
             }
 
-            PrimaryButton(title: viewModel.settings.dryRun ? "Dry Run starten" : "Sortierung starten", systemImage: "arrow.triangle.2.circlepath", isDisabled: !viewModel.canSort) {
+            PrimaryButton(title: viewModel.settings.dryRun ? "Plan erstellen" : "Direkt sortieren", systemImage: viewModel.settings.dryRun ? "checklist" : "arrow.triangle.2.circlepath", isDisabled: !viewModel.canSort) {
                 Task { await viewModel.sortSelectedFolder() }
             }
         }
@@ -115,8 +118,4 @@ struct MainWindowView: View {
             Capsule().stroke(.quaternary, lineWidth: 1)
         }
     }
-}
-
-#Preview {
-    MainWindowView(viewModel: MainViewModel())
 }

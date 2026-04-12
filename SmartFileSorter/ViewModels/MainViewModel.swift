@@ -10,6 +10,7 @@ final class MainViewModel {
     var logEntries: [SortAction] = []
     var summary = SortSummary.empty
     var appState: AppState = .ready
+    var isShowingSortConfirmation = false
 
     private let folderPicker = FolderPickerService()
     private let logger = LoggerService()
@@ -28,7 +29,19 @@ final class MainViewModel {
     }
 
     var canSort: Bool {
-        selectedFolderURL != nil && !detectedFiles.isEmpty && !isRunning
+        selectedFolderURL != nil && !sortableItems.isEmpty && !isRunning
+    }
+
+    var plannedMoveItems: [FileItem] {
+        detectedFiles.filter { $0.status == .planned }
+    }
+
+    var canConfirmSort: Bool {
+        selectedFolderURL != nil && !plannedMoveItems.isEmpty && !isRunning
+    }
+
+    private var sortableItems: [FileItem] {
+        detectedFiles.filter { $0.status == .detected || $0.status == .planned }
     }
 
     func pickFolder() {
@@ -37,6 +50,7 @@ final class MainViewModel {
         detectedFiles = []
         summary = .empty
         logEntries = [logger.entry(.info, "Ordner ausgewählt: \(url.lastPathComponent)")]
+        isShowingSortConfirmation = false
         appState = .ready
     }
 
@@ -76,11 +90,17 @@ final class MainViewModel {
         }
 
         appState = .sorting
-        logEntries.append(logger.entry(.info, settings.dryRun ? "Dry Run gestartet." : "Sortierung gestartet."))
+        isShowingSortConfirmation = false
 
-        let sortedItems = sorter.sort(items: detectedFiles, folderURL: selectedFolderURL, settings: settings)
-        detectedFiles = sortedItems
-        summary = summary(for: sortedItems)
+        if settings.dryRun {
+            logEntries.append(logger.entry(.info, "Sicherer Modus: Plan wird erstellt."))
+        } else {
+            logEntries.append(logger.entry(.info, "Sortierung gestartet."))
+        }
+
+        let sortedItems = sorter.sort(items: sortableItems, folderURL: selectedFolderURL, settings: settings)
+        updateDetectedFiles(with: sortedItems)
+        summary = summary(for: detectedFiles)
 
         for item in sortedItems {
             switch item.status {
@@ -97,7 +117,55 @@ final class MainViewModel {
             }
         }
 
-        logEntries.append(logger.entry(.success, settings.dryRun ? "Dry Run abgeschlossen." : "Sortierung abgeschlossen."))
+        if settings.dryRun {
+            if plannedMoveItems.isEmpty {
+                logEntries.append(logger.entry(.warning, "Keine verschiebbaren Dateien im Plan."))
+            } else {
+                logEntries.append(logger.entry(.success, "Plan bereit: \(plannedMoveItems.count) Verschiebungen warten auf Bestätigung."))
+                isShowingSortConfirmation = true
+            }
+        } else {
+            logEntries.append(logger.entry(.success, "Sortierung abgeschlossen."))
+        }
+
+        appState = .finished
+    }
+
+    func confirmPlannedSort() async {
+        guard let selectedFolderURL, canConfirmSort else { return }
+
+        isShowingSortConfirmation = false
+        appState = .sorting
+        logEntries.append(logger.entry(.info, "Bestätigte Sortierung gestartet."))
+
+        var executionSettings = settings
+        executionSettings.dryRun = false
+
+        let plannedItems = plannedMoveItems
+        let sortedItems = sorter.sort(items: plannedItems, folderURL: selectedFolderURL, settings: executionSettings)
+        updateDetectedFiles(with: sortedItems)
+        summary = summary(for: detectedFiles)
+
+        for item in sortedItems {
+            switch item.status {
+            case .moved:
+                logEntries.append(logger.entry(.success, "Verschoben: \(item.originalName)"))
+            case .skipped:
+                logEntries.append(logger.entry(.warning, "Übersprungen: \(item.originalName)"))
+            case .failed:
+                logEntries.append(logger.entry(.error, "Fehler: \(item.originalName)"))
+            case .planned, .detected:
+                break
+            }
+        }
+
+        let failures = sortedItems.filter { $0.status == .failed }.count
+        if failures > 0 {
+            logEntries.append(logger.entry(.warning, "Sortierung mit \(failures) Fehlern abgeschlossen."))
+        } else {
+            logEntries.append(logger.entry(.success, "Sortierung abgeschlossen."))
+        }
+
         appState = .finished
     }
 
@@ -105,11 +173,19 @@ final class MainViewModel {
         detectedFiles = []
         logEntries = []
         summary = .empty
+        isShowingSortConfirmation = false
         appState = .ready
     }
 
     func count(for category: Category) -> Int {
         detectedFiles.filter { $0.category == category }.count
+    }
+
+    private func updateDetectedFiles(with updatedItems: [FileItem]) {
+        let updatedByID = Dictionary(uniqueKeysWithValues: updatedItems.map { ($0.id, $0) })
+        detectedFiles = detectedFiles.map { item in
+            updatedByID[item.id] ?? item
+        }
     }
 
     private func summary(for items: [FileItem]) -> SortSummary {

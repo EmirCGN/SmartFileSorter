@@ -384,41 +384,88 @@ struct MainWindowView: View {
 
     private var rightColumn: some View {
         VStack(spacing: 16) {
-            card("Aktivitätslog", icon: "list.bullet.rectangle") {
-                if viewModel.logEntries.isEmpty {
-                    ContentUnavailableView("Noch keine Aktivität", systemImage: "text.alignleft", description: Text("Wähle einen Ordner und starte die Analyse."))
-                        .frame(maxWidth: .infinity, minHeight: 320)
-                } else {
+            filePreviewCard
+
+            HStack(alignment: .top, spacing: 16) {
+                activityLogCard
+                    .frame(maxWidth: .infinity)
+                summaryCard
+                    .frame(width: 260)
+            }
+        }
+    }
+
+    private var filePreviewCard: some View {
+        card("Dateivorschau", icon: "tablecells") {
+            if viewModel.detectedFiles.isEmpty {
+                ContentUnavailableView("Noch keine Vorschau", systemImage: "doc.text.magnifyingglass", description: Text("Starte die Analyse, um Dateien und Zielordner zu prüfen."))
+                    .frame(maxWidth: .infinity, minHeight: 220)
+            } else {
+                VStack(spacing: 0) {
+                    HStack {
+                        Text("Datei").frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Kategorie").frame(width: 130, alignment: .leading)
+                        Text("Ziel").frame(width: 150, alignment: .leading)
+                        Text("Status").frame(width: 95, alignment: .leading)
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 10) {
-                            ForEach(viewModel.logEntries) { entry in
-                                HStack(alignment: .top, spacing: 10) {
-                                    Image(systemName: icon(for: entry.kind))
-                                        .frame(width: 24, height: 24)
-                                    VStack(alignment: .leading) {
-                                        Text(entry.message)
-                                        Text(entry.date, style: .time)
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                }
-                                .padding(10)
-                                .background(.background.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+                        LazyVStack(spacing: 8) {
+                            ForEach(viewModel.detectedFiles) { item in
+                                filePreviewRow(item)
                             }
                         }
                     }
-                    .frame(minHeight: 320)
+                    .frame(minHeight: 230, maxHeight: 290)
                 }
             }
+        }
+    }
 
-            card("Zusammenfassung", icon: "chart.bar") {
-                HStack(spacing: 10) {
-                    summaryTile("Dateien", value: viewModel.summary.totalFiles)
-                    summaryTile(viewModel.settings.dryRun ? "Geplant" : "Verschoben", value: viewModel.summary.movedFiles)
-                    summaryTile("Ignoriert", value: viewModel.summary.skippedFiles)
-                    summaryTile("Fehler", value: viewModel.summary.failedFiles)
+    private var activityLogCard: some View {
+        card("Aktivitätslog", icon: "list.bullet.rectangle") {
+            if viewModel.logEntries.isEmpty {
+                ContentUnavailableView("Noch keine Aktivität", systemImage: "text.alignleft", description: Text("Wähle einen Ordner und starte die Analyse."))
+                    .frame(maxWidth: .infinity, minHeight: 210)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        ForEach(viewModel.logEntries) { entry in
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: icon(for: entry.kind))
+                                    .foregroundStyle(color(for: entry.kind))
+                                    .frame(width: 24, height: 24)
+                                    .background(color(for: entry.kind).opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(entry.message)
+                                        .lineLimit(2)
+                                    Text(entry.date, style: .time)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                            }
+                            .padding(10)
+                            .background(.background.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+                        }
+                    }
                 }
+                .frame(minHeight: 210)
+            }
+        }
+    }
+
+    private var summaryCard: some View {
+        card("Zusammenfassung", icon: "chart.bar") {
+            VStack(spacing: 10) {
+                summaryTile("Dateien", value: viewModel.summary.totalFiles, color: .secondary)
+                summaryTile(viewModel.settings.dryRun ? "Geplant" : "Verschoben", value: viewModel.summary.movedFiles, color: .green)
+                summaryTile("Ignoriert", value: viewModel.summary.skippedFiles, color: .orange)
+                summaryTile("Fehler", value: viewModel.summary.failedFiles, color: .red)
             }
         }
     }
@@ -454,13 +501,75 @@ struct MainWindowView: View {
 
     private func card<Content: View>(_ title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label(title, systemImage: icon).font(.headline)
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.tint)
+                    .frame(width: 26, height: 26)
+                    .background(.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                Text(title).font(.headline)
+                Spacer(minLength: 0)
+            }
             content()
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
         .overlay { RoundedRectangle(cornerRadius: 8).stroke(.quaternary, lineWidth: 1) }
+        .shadow(color: .black.opacity(0.06), radius: 12, y: 5)
+    }
+
+    private func filePreviewRow(_ item: FileItem) -> some View {
+        HStack(spacing: 12) {
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.originalName)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if let errorMessage = item.errorMessage {
+                        Text(errorMessage)
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                            .lineLimit(1)
+                    }
+                }
+            } icon: {
+                Image(systemName: fileIcon(for: item))
+                    .foregroundStyle(.tint)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            categoryBadge(item.category)
+                .frame(width: 130, alignment: .leading)
+
+            Text(destinationText(for: item))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(width: 150, alignment: .leading)
+
+            Text(item.status.rawValue)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(statusColor(for: item.status))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(statusColor(for: item.status).opacity(0.12), in: Capsule())
+                .frame(width: 95, alignment: .leading)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.background.opacity(0.55), in: RoundedRectangle(cornerRadius: 8))
+        .overlay { RoundedRectangle(cornerRadius: 8).stroke(.quaternary, lineWidth: 1) }
+    }
+
+    private func categoryBadge(_ category: Category) -> some View {
+        Label(category.name, systemImage: category.systemImage)
+            .font(.caption.weight(.semibold))
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(.tint.opacity(0.1), in: Capsule())
     }
 
     private func metricPill(_ title: String, value: Int, icon: String) -> some View {
@@ -470,16 +579,44 @@ struct MainWindowView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
             .background(.background.opacity(0.55), in: Capsule())
+            .overlay { Capsule().stroke(.quaternary, lineWidth: 1) }
     }
 
-    private func summaryTile(_ title: String, value: Int) -> some View {
+    private func summaryTile(_ title: String, value: Int, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("\(value)").font(.title2.weight(.semibold)).monospacedDigit()
             Text(title).font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(.background.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+        .background(color.opacity(0.09), in: RoundedRectangle(cornerRadius: 8))
+        .overlay { RoundedRectangle(cornerRadius: 8).stroke(color.opacity(0.16), lineWidth: 1) }
+    }
+
+    private func destinationText(for item: FileItem) -> String {
+        item.destinationURL?.lastPathComponent ?? item.category.folderName
+    }
+
+    private func fileIcon(for item: FileItem) -> String {
+        switch item.category.id {
+        case Category.images.id: "photo"
+        case Category.documents.id: "doc.text"
+        case Category.archives.id: "archivebox"
+        case Category.audio.id: "waveform"
+        case Category.videos.id: "film"
+        case Category.apps.id: "app"
+        default: "doc"
+        }
+    }
+
+    private func statusColor(for status: FileStatus) -> Color {
+        switch status {
+        case .detected: .blue
+        case .planned: .teal
+        case .moved: .green
+        case .skipped: .orange
+        case .failed: .red
+        }
     }
 
     private func icon(for kind: SortActionKind) -> String {
@@ -488,6 +625,15 @@ struct MainWindowView: View {
         case .success: "checkmark.circle"
         case .warning: "exclamationmark.triangle"
         case .error: "xmark.octagon"
+        }
+    }
+
+    private func color(for kind: SortActionKind) -> Color {
+        switch kind {
+        case .info: .secondary
+        case .success: .green
+        case .warning: .orange
+        case .error: .red
         }
     }
 }
