@@ -22,18 +22,26 @@ struct MainWindowView: View {
                     rightColumn
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
+                .layoutPriority(1)
 
                 footer
             }
             .padding(20)
         }
-        .frame(minWidth: 1040, minHeight: 720)
-        .sheet(isPresented: $viewModel.isShowingSortConfirmation) {
+        .frame(minWidth: 980, minHeight: 560)
+        .sheet(isPresented: sortConfirmationBinding) {
             SafeSortConfirmationView(viewModel: viewModel)
         }
         .animation(.snappy(duration: 0.22), value: viewModel.appState)
         .animation(.snappy(duration: 0.22), value: viewModel.detectedFiles.count)
         .animation(.snappy(duration: 0.22), value: showsActivityDetails)
+    }
+
+    private var sortConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { _viewModel.wrappedValue.isShowingSortConfirmation },
+            set: { _viewModel.wrappedValue.isShowingSortConfirmation = $0 }
+        )
     }
 
     private var filteredItems: [FileItem] {
@@ -146,9 +154,11 @@ struct MainWindowView: View {
                 settingsCard
                 categoriesCard
             }
+            .padding(.bottom, 4)
         }
         .scrollIndicators(.hidden)
-        .frame(minWidth: 330, idealWidth: 360, maxWidth: 390)
+        .frame(minWidth: 300, idealWidth: 340, maxWidth: 370)
+        .frame(maxHeight: .infinity)
     }
 
     private var workflowStrip: some View {
@@ -219,21 +229,20 @@ struct MainWindowView: View {
     }
 
     private var rightColumn: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 10) {
             filePreviewCard
-
-            HStack(alignment: .top, spacing: 14) {
-                summaryCard.frame(width: 270)
-                activityDetails.frame(maxWidth: .infinity)
-            }
+                .layoutPriority(1)
+            compactStatusStrip
+            activityDetails
         }
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     private var filePreviewCard: some View {
         card("Sortierplan", icon: "tablecells") {
             if viewModel.detectedFiles.isEmpty {
                 ContentUnavailableView("Noch kein Plan", systemImage: "doc.text.magnifyingglass", description: Text("Starte die Analyse, um Dateien und Zielordner zu prüfen."))
-                    .frame(maxWidth: .infinity, minHeight: 270)
+                    .frame(maxWidth: .infinity, minHeight: 170)
             } else {
                 VStack(spacing: 0) {
                     planToolbar
@@ -266,7 +275,7 @@ struct MainWindowView: View {
 
                     if filteredItems.isEmpty {
                         ContentUnavailableView("Keine Treffer", systemImage: "line.3.horizontal.decrease.circle", description: Text("Passe Suche oder Filter an."))
-                            .frame(maxWidth: .infinity, minHeight: 280)
+                            .frame(maxWidth: .infinity, minHeight: 170)
                     } else {
                         ScrollView {
                             LazyVStack(spacing: 8) {
@@ -275,7 +284,7 @@ struct MainWindowView: View {
                                 }
                             }
                         }
-                        .frame(minHeight: 300, maxHeight: 360)
+                        .frame(minHeight: 120, idealHeight: 220, maxHeight: 260)
                     }
                 }
             }
@@ -325,62 +334,60 @@ struct MainWindowView: View {
         .padding(.bottom, 12)
     }
 
-    private var summaryCard: some View {
-        card("Zusammenfassung", icon: "chart.bar") {
-            VStack(spacing: 10) {
-                summaryTile("Dateien", value: viewModel.summary.totalFiles, color: .secondary)
-                summaryTile(viewModel.settings.dryRun ? "Geplant" : "Verschoben", value: viewModel.summary.movedFiles, color: .green)
-                summaryTile("Ignoriert", value: viewModel.summary.skippedFiles, color: .orange)
-                summaryTile("Fehler", value: viewModel.summary.failedFiles, color: .red)
-            }
+    private var compactStatusStrip: some View {
+        HStack(spacing: 10) {
+            summaryTile("Dateien", value: viewModel.summary.totalFiles, color: .secondary)
+            summaryTile(viewModel.settings.dryRun ? "Geplant" : "Verschoben", value: viewModel.summary.movedFiles, color: .green)
+            summaryTile("Ignoriert", value: viewModel.summary.skippedFiles, color: .orange)
+            summaryTile("Fehler", value: viewModel.summary.failedFiles, color: .red)
         }
     }
 
     private var activityDetails: some View {
-        quietGroup("Details", icon: "list.bullet.rectangle") {
-            DisclosureGroup(isExpanded: $showsActivityDetails) {
-                if viewModel.logEntries.isEmpty {
-                    Text("Noch keine Aktivität.")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 8) {
-                            ForEach(viewModel.logEntries) { entry in
-                                HStack(alignment: .top, spacing: 10) {
-                                    Image(systemName: icon(for: entry.kind))
-                                        .foregroundStyle(color(for: entry.kind))
-                                        .frame(width: 24, height: 24)
-                                        .background(color(for: entry.kind).opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(entry.message)
-                                            .lineLimit(2)
-                                        Text(entry.date, style: .time)
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
+        DisclosureGroup(isExpanded: $showsActivityDetails) {
+            if viewModel.logEntries.isEmpty {
+                Text("Noch keine Aktivität.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 70, alignment: .center)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(viewModel.logEntries) { entry in
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: icon(for: entry.kind))
+                                    .foregroundStyle(color(for: entry.kind))
+                                    .frame(width: 24, height: 24)
+                                    .background(color(for: entry.kind).opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(entry.message)
+                                        .lineLimit(2)
+                                    Text(entry.date, style: .time)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
                                 }
-                                .padding(10)
-                                .background(.background.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+                                Spacer()
                             }
+                            .padding(10)
+                            .background(.background.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
                         }
                     }
-                    .frame(minHeight: 160, maxHeight: 220)
                 }
-            } label: {
-                HStack {
-                    Text(viewModel.logEntries.isEmpty ? "Aktivität anzeigen" : "\(viewModel.logEntries.count) Einträge")
-                    Spacer()
-                    if let latest = viewModel.logEntries.last {
-                        Text(latest.kind.rawValue)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(color(for: latest.kind))
-                    }
-                }
-                .font(.callout.weight(.medium))
+                .frame(minHeight: 80, maxHeight: 130)
             }
+        } label: {
+            HStack {
+                Label(viewModel.logEntries.isEmpty ? "Details" : "Details (\(viewModel.logEntries.count))", systemImage: "list.bullet.rectangle")
+                Spacer()
+                if let latest = viewModel.logEntries.last {
+                    Text(latest.kind.rawValue)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(color(for: latest.kind))
+                }
+            }
+            .font(.callout.weight(.medium))
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
     }
 
     private var footer: some View {
@@ -460,7 +467,7 @@ struct MainWindowView: View {
                 .font(.callout.weight(.medium))
             Spacer()
             Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isActive ? .green : .tertiary)
+                .foregroundStyle(isActive ? .green : .secondary.opacity(0.45))
         }
     }
 
@@ -572,14 +579,22 @@ struct MainWindowView: View {
     }
 
     private func summaryTile(_ title: String, value: Int, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("\(value)").font(.title2.weight(.semibold)).monospacedDigit()
-            Text(title).font(.caption).foregroundStyle(.secondary)
+        HStack(spacing: 8) {
+            Circle()
+                .fill(color.opacity(0.75))
+                .frame(width: 7, height: 7)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 4)
+            Text("\(value)")
+                .font(.callout.weight(.semibold))
+                .monospacedDigit()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(color.opacity(0.09), in: RoundedRectangle(cornerRadius: 8))
-        .overlay { RoundedRectangle(cornerRadius: 8).stroke(color.opacity(0.16), lineWidth: 1) }
+        .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+        .padding(.horizontal, 10)
+        .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .overlay { RoundedRectangle(cornerRadius: 8).stroke(color.opacity(0.14), lineWidth: 1) }
     }
 
     private func destinationText(for item: FileItem) -> String {
