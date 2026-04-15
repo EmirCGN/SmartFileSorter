@@ -10,6 +10,12 @@ struct FileMover {
 
     func move(_ item: FileItem, sourceFolderURL: URL, settings: AppSettings) throws -> FileItem {
         var updatedItem = item
+        updatedItem.errorMessage = nil
+
+        if !item.isIncluded {
+            updatedItem.status = .skipped
+            return updatedItem
+        }
 
         if item.category == .other && !settings.sortUnknownToOthers {
             updatedItem.status = .skipped
@@ -28,20 +34,27 @@ struct FileMover {
 
         if fileManager.fileExists(atPath: destinationURL.path) && !settings.resolveConflictsAutomatically {
             updatedItem.status = .failed
+            updatedItem.errorMessage = "Am Ziel existiert bereits eine Datei mit diesem Namen."
             return updatedItem
         }
 
-        if settings.createMissingFolders {
-            try fileManager.createDirectory(at: targetFolderURL, withIntermediateDirectories: true)
-        }
+        do {
+            if settings.createMissingFolders {
+                try fileManager.createDirectory(at: targetFolderURL, withIntermediateDirectories: true)
+            }
 
-        if item.sourceURL.standardizedFileURL == destinationURL.standardizedFileURL {
-            updatedItem.status = .skipped
+            if item.sourceURL.standardizedFileURL == destinationURL.standardizedFileURL {
+                updatedItem.status = .skipped
+                return updatedItem
+            }
+
+            try fileManager.moveItem(at: item.sourceURL, to: destinationURL)
+            updatedItem.status = .moved
+            return updatedItem
+        } catch {
+            updatedItem.status = .failed
+            updatedItem.errorMessage = error.localizedDescription
             return updatedItem
         }
-
-        try fileManager.moveItem(at: item.sourceURL, to: destinationURL)
-        updatedItem.status = .moved
-        return updatedItem
     }
 }

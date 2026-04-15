@@ -5,32 +5,40 @@ struct SummaryView: View {
 
     var body: some View {
         InfoCard(title: "Zusammenfassung", systemImage: "chart.bar") {
-            HStack(spacing: 10) {
-                summaryTile("Dateien", value: viewModel.summary.totalFiles, icon: "doc", color: .secondary)
-                summaryTile(viewModel.settings.dryRun ? "Geplant" : "Verschoben", value: viewModel.summary.movedFiles, icon: "arrow.right.circle", color: .green)
-                summaryTile("Ignoriert", value: viewModel.summary.skippedFiles, icon: "forward", color: .orange)
-                summaryTile("Fehler", value: viewModel.summary.failedFiles, icon: "exclamationmark.octagon", color: .red)
-            }
+            CompactSummaryStrip(summary: viewModel.summary, dryRun: viewModel.settings.dryRun)
+        }
+    }
+}
+
+struct CompactSummaryStrip: View {
+    let summary: SortSummary
+    let dryRun: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            summaryTile("Dateien", value: summary.totalFiles, color: .secondary)
+            summaryTile(dryRun ? "Geplant" : "Verschoben", value: summary.movedFiles, color: .green)
+            summaryTile("Ignoriert", value: summary.skippedFiles, color: .orange)
+            summaryTile("Fehler", value: summary.failedFiles, color: .red)
         }
     }
 
-    private func summaryTile(_ title: String, value: Int, icon: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: icon)
-                .foregroundStyle(color)
-            Text("\(value)")
-                .font(.title2.weight(.semibold))
-                .monospacedDigit()
+    private func summaryTile(_ title: String, value: Int, color: Color) -> some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(color.opacity(0.75))
+                .frame(width: 7, height: 7)
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Spacer(minLength: 4)
+            Text("\(value)")
+                .font(.callout.weight(.semibold))
+                .monospacedDigit()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+        .padding(.horizontal, 10)
         .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(color.opacity(0.16), lineWidth: 1)
-        }
+        .overlay { RoundedRectangle(cornerRadius: 8).stroke(color.opacity(0.14), lineWidth: 1) }
     }
 }
