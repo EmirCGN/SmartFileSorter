@@ -1,10 +1,14 @@
 import Foundation
 
 struct ConflictResolver {
-    private let fileManager = FileManager.default
+    private let fileSystem: any FileSystemManaging
 
-    func resolvedURL(for proposedURL: URL) -> URL {
-        guard fileManager.fileExists(atPath: proposedURL.path) else {
+    nonisolated init(fileSystem: any FileSystemManaging = LocalFileSystem()) {
+        self.fileSystem = fileSystem
+    }
+
+    nonisolated func resolvedURL(for proposedURL: URL) -> URL {
+        guard fileSystem.fileExists(atPath: proposedURL.path) else {
             return proposedURL
         }
 
@@ -16,7 +20,7 @@ struct ConflictResolver {
         while true {
             let candidateName = fileExtension.isEmpty ? "\(baseName)_\(counter)" : "\(baseName)_\(counter).\(fileExtension)"
             let candidateURL = directoryURL.appendingPathComponent(candidateName)
-            if !fileManager.fileExists(atPath: candidateURL.path) {
+            if !fileSystem.fileExists(atPath: candidateURL.path) {
                 return candidateURL
             }
             counter += 1

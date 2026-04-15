@@ -64,10 +64,8 @@ struct SafeSortConfirmationView: View {
             Spacer()
 
             Button {
-                Task {
-                    await viewModel.confirmPlannedSort()
-                    dismiss()
-                }
+                viewModel.startConfirmPlannedSort()
+                dismiss()
             } label: {
                 Label("Jetzt verschieben", systemImage: "arrow.right.circle.fill")
                     .font(.callout.weight(.semibold))

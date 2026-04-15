@@ -5,8 +5,11 @@ import Observation
 @Observable
 final class MainViewModel {
     var selectedFolderURL: URL?
-    var settings = AppSettingsStore.load() {
-        didSet { AppSettingsStore.save(settings) }
+    var destinationBaseURL: URL? {
+        didSet { persistDestinationSelection() }
+    }
+    var settings: AppSettings {
+        didSet { settingsStore.save(settings) }
     }
     var detectedFiles: [FileItem] = []
     var logEntries: [SortAction] = []
@@ -14,16 +17,89 @@ final class MainViewModel {
     var appState: AppState = .ready
     var isShowingSortConfirmation = false
     var progress = SortProgress.empty
-    var lastUndoActions: [SortUndoAction] = []
+    var lastUndoActions: [SortUndoAction] = [] {
+        didSet {
+            Task(priority: .utility) { [undoHistoryCoordinator, actions = lastUndoActions] in
+                await undoHistoryCoordinator.saveActions(actions)
+            }
+        }
+    }
 
-    private let folderPicker = FolderPickerService()
-    private let logger = LoggerService()
-    private let sorter = FileSorter()
-    private let undoService = UndoService()
-    private var cancelRequested = false
+    private let folderPicker: any FolderPicking
+    private let logger: any Logging
+    private let undoService: any UndoPerforming
+    private let workflowService: any SortWorkflowProviding
+    private let sortTaskCoordinator: any SortTaskCoordinating
+    private let undoHistoryCoordinator: any UndoHistoryCoordinating
+    private let settingsStore: any AppSettingsStoring
+    private let bookmarkService: BookmarkService
+
+    private var itemIndexByID: [UUID: Int] = [:]
+    private var currentOperationTask: Task<Void, Never>?
+
+    convenience init() {
+        let settingsStore = AppSettingsStore()
+        let fileSystem = LocalFileSystem()
+        let scanner = DirectoryScanner(fileSystem: fileSystem)
+        let mover = FileMover(fileSystem: fileSystem, conflictResolver: ConflictResolver(fileSystem: fileSystem))
+        let sorter = FileSorter(scanner: scanner, analyzer: FileAnalyzer(), mover: mover)
+        let executionService = SortExecutionService(sorter: sorter)
+        self.init(
+            folderPicker: FolderPickerService(),
+            logger: LoggerService(),
+            undoService: UndoService(fileSystem: fileSystem),
+            workflowService: SortWorkflowService(),
+            sortTaskCoordinator: SortTaskCoordinator(executionService: executionService),
+            undoHistoryCoordinator: UndoHistoryCoordinator(store: UndoHistoryStore()),
+            settingsStore: settingsStore,
+            bookmarkService: BookmarkService()
+        )
+    }
+
+    init(
+        folderPicker: any FolderPicking,
+        logger: any Logging,
+        undoService: any UndoPerforming,
+        workflowService: any SortWorkflowProviding,
+        sortTaskCoordinator: any SortTaskCoordinating,
+        undoHistoryCoordinator: any UndoHistoryCoordinating,
+        settingsStore: any AppSettingsStoring,
+        bookmarkService: BookmarkService
+    ) {
+        self.folderPicker = folderPicker
+        self.logger = logger
+        self.undoService = undoService
+        self.workflowService = workflowService
+        self.sortTaskCoordinator = sortTaskCoordinator
+        self.undoHistoryCoordinator = undoHistoryCoordinator
+        self.settingsStore = settingsStore
+        self.bookmarkService = bookmarkService
+
+        let settingsLoad = settingsStore.load()
+        settings = settingsLoad.settings
+        destinationBaseURL = nil
+        lastUndoActions = []
+
+        if let diagnosticMessage = settingsLoad.diagnosticMessage {
+            logEntries = [logger.entry(.warning, diagnosticMessage)]
+        }
+
+        Task {
+            let loaded = await undoHistoryCoordinator.loadActions()
+            await MainActor.run {
+                self.lastUndoActions = loaded
+            }
+        }
+
+        resolveDestinationSelectionFromSettings()
+    }
 
     var selectedFolderPath: String {
         selectedFolderURL?.path ?? "Noch kein Ordner ausgewählt"
+    }
+
+    var selectedDestinationPath: String {
+        destinationBaseURL?.path ?? "Gleich wie Quellordner"
     }
 
     var isRunning: Bool {
@@ -61,37 +137,75 @@ final class MainViewModel {
     func pickFolder() {
         guard let url = folderPicker.pickFolder() else { return }
         selectedFolderURL = url
-        detectedFiles = []
+        replaceDetectedFiles(with: [])
         summary = .empty
         progress = .empty
-        lastUndoActions = []
         logEntries = [logger.entry(.info, "Ordner ausgewählt: \(url.lastPathComponent)")]
         isShowingSortConfirmation = false
         appState = .ready
     }
 
+    func pickDestinationFolder() {
+        guard let url = folderPicker.pickFolder() else { return }
+        destinationBaseURL = url
+        logEntries.append(logger.entry(.info, "Zielordner ausgewählt: \(url.path)"))
+    }
+
+    func clearDestinationFolder() {
+        destinationBaseURL = nil
+        logEntries.append(logger.entry(.info, "Zielordner zurückgesetzt: Quellordner wird verwendet."))
+    }
+
+    func startPrimaryAction() {
+        if detectedFiles.isEmpty {
+            startAnalyzeSelectedFolder()
+        } else {
+            startSortSelectedFolder()
+        }
+    }
+
+    func startAnalyzeSelectedFolder() {
+        currentOperationTask?.cancel()
+        currentOperationTask = Task { [weak self] in
+            await self?.analyzeSelectedFolder()
+        }
+    }
+
+    func startSortSelectedFolder() {
+        currentOperationTask?.cancel()
+        currentOperationTask = Task { [weak self] in
+            await self?.sortSelectedFolder()
+        }
+    }
+
+    func startConfirmPlannedSort() {
+        currentOperationTask?.cancel()
+        currentOperationTask = Task { [weak self] in
+            await self?.confirmPlannedSort()
+        }
+    }
+
     func analyzeSelectedFolder() async {
         guard let selectedFolderURL else { return }
 
-        cancelRequested = false
         appState = .analyzing
         progress = .empty
         summary = .empty
-        lastUndoActions = []
         isShowingSortConfirmation = false
         logEntries.append(logger.entry(.info, "Analyse gestartet."))
 
-        do {
-            let items = try sorter.analyze(folderURL: selectedFolderURL, settings: settings)
-            guard !cancelRequested else {
-                logEntries.append(logger.entry(.warning, "Analyse abgebrochen."))
-                appState = .ready
-                progress = .empty
-                return
-            }
+        let settingsSnapshot = settings
 
-            detectedFiles = items
-            summary = summary(for: items)
+        do {
+            let items = try await sortTaskCoordinator.analyze(
+                folderURL: selectedFolderURL,
+                settings: settingsSnapshot
+            )
+
+            try Task.checkCancellation()
+
+            replaceDetectedFiles(with: items)
+            summary = workflowService.summary(for: items)
             progress = SortProgress(processedFiles: items.count, totalFiles: items.count, currentFileName: "")
 
             if items.isEmpty {
@@ -102,9 +216,16 @@ final class MainViewModel {
 
             appState = .finished
         } catch {
+            if Task.isCancelled {
+                logEntries.append(logger.entry(.warning, "Analyse abgebrochen."))
+                appState = .ready
+                progress = .empty
+                return
+            }
             logEntries.append(logger.entry(.error, "Analyse fehlgeschlagen: \(error.localizedDescription)"))
             appState = .failed
         }
+        currentOperationTask = nil
     }
 
     func sortSelectedFolder() async {
@@ -114,63 +235,95 @@ final class MainViewModel {
             await analyzeSelectedFolder()
         }
 
-        cancelRequested = false
         appState = .sorting
         progress = SortProgress(processedFiles: 0, totalFiles: sortableItems.count, currentFileName: "")
         isShowingSortConfirmation = false
 
         if settings.dryRun {
-            lastUndoActions = []
             logEntries.append(logger.entry(.info, "Sicherer Modus: Plan wird erstellt."))
         } else {
             logEntries.append(logger.entry(.info, "Sortierung gestartet."))
         }
 
-        let sortedItems = sorter.sort(
-            items: sortableItems,
-            folderURL: selectedFolderURL,
-            settings: settings,
-            progress: { [weak self] progress in
-                Task { @MainActor in self?.progress = progress }
-            },
-            shouldCancel: { [weak self] in
-                MainActor.assumeIsolated { self?.cancelRequested == true }
-            }
-        )
+        let itemsToSort = sortableItems
+        let settingsSnapshot = settings
+        let destinationSnapshot = destinationBaseURL
+        let totalFiles = itemsToSort.count
+        var incrementalUndoActions: [SortUndoAction] = []
+        let persistBatchSize = 100
 
-        let movedUndoActions = sortedItems.compactMap { item -> SortUndoAction? in
+        let makeUndoAction: (FileItem) -> SortUndoAction? = { item in
             guard item.status == .moved, let destinationURL = item.destinationURL else { return nil }
-            return SortUndoAction(originalURL: item.sourceURL, movedURL: destinationURL, fileName: item.originalName)
+            return SortUndoAction(
+                originalURL: item.sourceURL,
+                movedURL: destinationURL,
+                fileName: item.originalName,
+                originalBookmarkData: try? self.bookmarkService.bookmarkData(for: item.sourceURL),
+                movedBookmarkData: try? self.bookmarkService.bookmarkData(for: destinationURL)
+            )
         }
 
-        if !settings.dryRun {
-            lastUndoActions = movedUndoActions
-        }
+        do {
+            let sortedItems = try await sortTaskCoordinator.sort(
+                items: itemsToSort,
+                folderURL: selectedFolderURL,
+                destinationBaseURL: destinationSnapshot,
+                settings: settingsSnapshot,
+                progress: { [weak self] progress in
+                    Task { @MainActor [weak self] in
+                        self?.progress = progress
+                    }
+                },
+                onItemProcessed: { processedItem in
+                    guard !settingsSnapshot.dryRun, let action = makeUndoAction(processedItem) else { return }
+                    incrementalUndoActions.append(action)
+                    if incrementalUndoActions.count.isMultiple(of: persistBatchSize) {
+                        let snapshot = incrementalUndoActions
+                        Task.detached(priority: .utility) { [undoHistoryCoordinator = self.undoHistoryCoordinator] in
+                            await undoHistoryCoordinator.saveActions(snapshot)
+                        }
+                    }
+                }
+            )
 
-        updateDetectedFiles(with: sortedItems)
-        summary = summary(for: detectedFiles)
-        log(sortedItems)
-
-        if cancelRequested {
-            logEntries.append(logger.entry(.warning, "Vorgang abgebrochen."))
-        } else if settings.dryRun {
-            if plannedMoveItems.isEmpty {
-                logEntries.append(logger.entry(.warning, "Keine verschiebbaren Dateien im Plan."))
-            } else {
-                logEntries.append(logger.entry(.success, "Plan bereit: \(plannedMoveItems.count) Verschiebungen warten auf Bestätigung."))
-                isShowingSortConfirmation = true
+            if !settingsSnapshot.dryRun {
+                lastUndoActions = incrementalUndoActions
             }
-        } else {
-            logEntries.append(logger.entry(.success, "Sortierung abgeschlossen."))
-        }
 
-        appState = .finished
+            updateDetectedFiles(with: sortedItems)
+            summary = workflowService.summary(for: detectedFiles)
+            logEntries.append(contentsOf: workflowService.logEntries(for: sortedItems, logger: logger))
+
+            if settingsSnapshot.dryRun {
+                if plannedMoveItems.isEmpty {
+                    logEntries.append(logger.entry(.warning, "Keine verschiebbaren Dateien im Plan."))
+                } else {
+                    logEntries.append(logger.entry(.success, "Plan bereit: \(plannedMoveItems.count) Verschiebungen warten auf Bestätigung."))
+                    isShowingSortConfirmation = true
+                }
+            } else {
+                logEntries.append(logger.entry(.success, "Sortierung abgeschlossen."))
+            }
+
+            if progress.totalFiles == 0 {
+                progress = SortProgress(processedFiles: totalFiles, totalFiles: totalFiles, currentFileName: "")
+            }
+            appState = .finished
+        } catch {
+            if Task.isCancelled {
+                logEntries.append(logger.entry(.warning, "Vorgang abgebrochen."))
+                appState = .ready
+            } else {
+                logEntries.append(logger.entry(.error, "Sortierung fehlgeschlagen: \(error.localizedDescription)"))
+                appState = .failed
+            }
+        }
+        currentOperationTask = nil
     }
 
     func confirmPlannedSort() async {
         guard let selectedFolderURL, canConfirmSort else { return }
 
-        cancelRequested = false
         isShowingSortConfirmation = false
         appState = .sorting
         progress = SortProgress(processedFiles: 0, totalFiles: plannedMoveItems.count, currentFileName: "")
@@ -178,43 +331,72 @@ final class MainViewModel {
 
         var executionSettings = settings
         executionSettings.dryRun = false
+        let destinationSnapshot = destinationBaseURL
+        var incrementalUndoActions: [SortUndoAction] = []
+        let persistBatchSize = 100
 
-        let plannedItems = plannedMoveItems
-        let sortedItems = sorter.sort(
-            items: plannedItems,
-            folderURL: selectedFolderURL,
-            settings: executionSettings,
-            progress: { [weak self] progress in
-                Task { @MainActor in self?.progress = progress }
-            },
-            shouldCancel: { [weak self] in
-                MainActor.assumeIsolated { self?.cancelRequested == true }
-            }
-        )
-
-        lastUndoActions = sortedItems.compactMap { item -> SortUndoAction? in
+        let makeUndoAction: (FileItem) -> SortUndoAction? = { item in
             guard item.status == .moved, let destinationURL = item.destinationURL else { return nil }
-            return SortUndoAction(originalURL: item.sourceURL, movedURL: destinationURL, fileName: item.originalName)
+            return SortUndoAction(
+                originalURL: item.sourceURL,
+                movedURL: destinationURL,
+                fileName: item.originalName,
+                originalBookmarkData: try? self.bookmarkService.bookmarkData(for: item.sourceURL),
+                movedBookmarkData: try? self.bookmarkService.bookmarkData(for: destinationURL)
+            )
         }
 
-        updateDetectedFiles(with: sortedItems)
-        summary = summary(for: detectedFiles)
-        log(sortedItems)
+        do {
+            let sortedItems = try await sortTaskCoordinator.sort(
+                items: plannedMoveItems,
+                folderURL: selectedFolderURL,
+                destinationBaseURL: destinationSnapshot,
+                settings: executionSettings,
+                progress: { [weak self] progress in
+                    Task { @MainActor [weak self] in
+                        self?.progress = progress
+                    }
+                },
+                onItemProcessed: { processedItem in
+                    guard let action = makeUndoAction(processedItem) else { return }
+                    incrementalUndoActions.append(action)
+                    if incrementalUndoActions.count.isMultiple(of: persistBatchSize) {
+                        let snapshot = incrementalUndoActions
+                        Task.detached(priority: .utility) { [undoHistoryCoordinator = self.undoHistoryCoordinator] in
+                            await undoHistoryCoordinator.saveActions(snapshot)
+                        }
+                    }
+                }
+            )
 
-        let failures = sortedItems.filter { $0.status == .failed }.count
-        if cancelRequested {
-            logEntries.append(logger.entry(.warning, "Sortierung abgebrochen."))
-        } else if failures > 0 {
-            logEntries.append(logger.entry(.warning, "Sortierung mit \(failures) Fehlern abgeschlossen."))
-        } else {
-            logEntries.append(logger.entry(.success, "Sortierung abgeschlossen."))
+            lastUndoActions = incrementalUndoActions
+
+            updateDetectedFiles(with: sortedItems)
+            summary = workflowService.summary(for: detectedFiles)
+            logEntries.append(contentsOf: workflowService.logEntries(for: sortedItems, logger: logger))
+
+            let failures = sortedItems.filter { $0.status == .failed }.count
+            if failures > 0 {
+                logEntries.append(logger.entry(.warning, "Sortierung mit \(failures) Fehlern abgeschlossen."))
+            } else {
+                logEntries.append(logger.entry(.success, "Sortierung abgeschlossen."))
+            }
+
+            appState = .finished
+        } catch {
+            if Task.isCancelled {
+                logEntries.append(logger.entry(.warning, "Sortierung abgebrochen."))
+                appState = .ready
+            } else {
+                logEntries.append(logger.entry(.error, "Sortierung fehlgeschlagen: \(error.localizedDescription)"))
+                appState = .failed
+            }
         }
-
-        appState = .finished
+        currentOperationTask = nil
     }
 
     func cancelCurrentOperation() {
-        cancelRequested = true
+        currentOperationTask?.cancel()
         logEntries.append(logger.entry(.warning, "Abbruch angefordert."))
     }
 
@@ -223,19 +405,20 @@ final class MainViewModel {
         let undoEntries = undoService.undo(lastUndoActions)
         logEntries.append(contentsOf: undoEntries)
         lastUndoActions = []
-        detectedFiles = []
+        replaceDetectedFiles(with: [])
         summary = .empty
         progress = .empty
         appState = .finished
     }
 
     func reset() {
-        detectedFiles = []
+        replaceDetectedFiles(with: [])
         logEntries = []
         summary = .empty
         progress = .empty
         lastUndoActions = []
-        cancelRequested = false
+        currentOperationTask?.cancel()
+        currentOperationTask = nil
         isShowingSortConfirmation = false
         appState = .ready
     }
@@ -245,47 +428,48 @@ final class MainViewModel {
     }
 
     func setIncluded(_ isIncluded: Bool, for item: FileItem) {
-        guard let index = detectedFiles.firstIndex(where: { $0.id == item.id }) else { return }
+        ensureItemIndex()
+        guard let index = itemIndexByID[item.id], detectedFiles.indices.contains(index) else { return }
         detectedFiles[index].isIncluded = isIncluded
         if !isIncluded {
             detectedFiles[index].status = .skipped
         } else if detectedFiles[index].status == .skipped {
             detectedFiles[index].status = .detected
         }
-        summary = summary(for: detectedFiles)
+        summary = workflowService.summary(for: detectedFiles)
     }
 
     private func updateDetectedFiles(with updatedItems: [FileItem]) {
-        let updatedByID = Dictionary(uniqueKeysWithValues: updatedItems.map { ($0.id, $0) })
-        detectedFiles = detectedFiles.map { item in
-            updatedByID[item.id] ?? item
+        ensureItemIndex()
+        for updated in updatedItems {
+            guard let index = itemIndexByID[updated.id], detectedFiles.indices.contains(index) else { continue }
+            detectedFiles[index] = updated
         }
     }
 
-    private func log(_ items: [FileItem]) {
-        for item in items {
-            switch item.status {
-            case .planned:
-                logEntries.append(logger.entry(.info, "Geplant: \(item.originalName) -> \(item.category.folderName)"))
-            case .moved:
-                logEntries.append(logger.entry(.success, "Verschoben: \(item.originalName)"))
-            case .skipped:
-                logEntries.append(logger.entry(.warning, "Übersprungen: \(item.originalName)"))
-            case .failed:
-                let message = item.errorMessage.map { "Fehler: \(item.originalName) (\($0))" } ?? "Fehler: \(item.originalName)"
-                logEntries.append(logger.entry(.error, message))
-            case .detected:
-                break
-            }
-        }
+    private func replaceDetectedFiles(with items: [FileItem]) {
+        detectedFiles = items
+        itemIndexByID = Dictionary(uniqueKeysWithValues: items.enumerated().map { ($1.id, $0) })
     }
 
-    private func summary(for items: [FileItem]) -> SortSummary {
-        SortSummary(
-            totalFiles: items.count,
-            movedFiles: items.filter { $0.status == .moved || $0.status == .planned }.count,
-            skippedFiles: items.filter { $0.status == .skipped || !$0.isIncluded }.count,
-            failedFiles: items.filter { $0.status == .failed }.count
-        )
+    private func ensureItemIndex() {
+        guard itemIndexByID.count != detectedFiles.count else { return }
+        itemIndexByID = Dictionary(uniqueKeysWithValues: detectedFiles.enumerated().map { ($1.id, $0) })
+    }
+
+    private func persistDestinationSelection() {
+        settings.destinationBasePath = destinationBaseURL?.path
+        settings.destinationBaseBookmarkData = destinationBaseURL.flatMap { try? bookmarkService.bookmarkData(for: $0) }
+    }
+
+    private func resolveDestinationSelectionFromSettings() {
+        if let bookmark = settings.destinationBaseBookmarkData,
+           let resolved = try? bookmarkService.resolveBookmark(bookmark) {
+            destinationBaseURL = resolved
+            return
+        }
+        if let path = settings.destinationBasePath {
+            destinationBaseURL = URL(fileURLWithPath: path, isDirectory: true)
+        }
     }
 }

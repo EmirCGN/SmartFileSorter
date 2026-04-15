@@ -1,7 +1,7 @@
 <div align="center">
   <h1>SmartFileSorter</h1>
   <p>
-    A modern macOS app for analyzing folders, previewing file moves, and sorting files safely into clean categories.
+    A safety-first macOS product for analyzing folders, previewing file moves, and sorting files into clean categories.
   </p>
   <p>
     <strong>SwiftUI</strong> · <strong>macOS</strong> · <strong>Safe Mode</strong> · <strong>Local-first</strong>
@@ -30,7 +30,13 @@
 
 SmartFileSorter helps you clean up folders without the usual "wait, where did that file go?" feeling.
 
-The app scans a selected folder, detects file categories, creates a safe sorting plan, and only moves files after explicit confirmation. It is designed for everyday folders like Downloads, Desktop exports, archive dumps, and messy project folders.
+The product scans a selected folder, detects file categories, creates a safe sorting plan, and only moves files after explicit confirmation. It is designed for everyday folders like Downloads, Desktop exports, archive dumps, and messy project folders.
+
+## Product Positioning
+
+- **Who it's for:** freelancers, students, and creators who regularly clean chaotic local folders.
+- **Core promise:** no hidden automation, no cloud dependency, no surprise data loss.
+- **Primary use case:** clean up large mixed folders quickly while keeping full control of every move.
 
 ## Features
 
@@ -177,6 +183,18 @@ xcodebuild -project SmartFileSorter.xcodeproj \
   build
 ```
 
+### Run smoke tests
+
+```bash
+./scripts/run_smoke_tests.sh
+```
+
+### Run unit tests
+
+```bash
+./scripts/run_unit_tests.sh
+```
+
 ## Project Structure
 
 ```text
@@ -218,31 +236,37 @@ SmartFileSorter/
 
 <table>
   <tr>
-    <td><strong>Undo sorting</strong></td>
-    <td>Store a sort session and let users move files back.</td>
+    <td><strong>Persistent undo history</strong></td>
+    <td>Keep the latest undo session available across app restarts.</td>
   </tr>
   <tr>
     <td><strong>Custom rules</strong></td>
-    <td>Edit categories, folder names, and file extensions in the app.</td>
+    <td>Create and manage your own categories, folder names, and extension sets.</td>
   </tr>
   <tr>
     <td><strong>Duplicate detection</strong></td>
-    <td>Detect identical files before moving them.</td>
+    <td>Detect identical files before moving and offer safe actions.</td>
   </tr>
   <tr>
-    <td><strong>Progress and cancel</strong></td>
-    <td>Improve large-folder handling with progress feedback and cancellation.</td>
+    <td><strong>Packaging and updates</strong></td>
+    <td>Add signed releases, notarization, and in-app update delivery.</td>
   </tr>
   <tr>
-    <td><strong>Tests</strong></td>
-    <td>Add unit tests for rules, conflict resolution, scanning, and moving.</td>
+    <td><strong>Automated tests</strong></td>
+    <td>Ship unit and integration tests for rules, conflict resolution, scanning, and moving.</td>
   </tr>
 </table>
 
 ## Privacy
 
-SmartFileSorter is designed as a local macOS utility. Folder analysis and sorting happen on your machine.
+SmartFileSorter is local-first. Folder analysis and sorting happen on your machine.
+
+See the full policy in [PRIVACY.md](PRIVACY.md).
+
+## Terms
+
+See [TERMS.md](TERMS.md).
 
 ## License
 
-No license has been added yet.
+This project is licensed under the MIT License. See [LICENSE](LICENSE).

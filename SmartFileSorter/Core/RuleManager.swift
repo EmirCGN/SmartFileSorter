@@ -3,11 +3,11 @@ import Foundation
 struct RuleManager {
     private let categories: [Category]
 
-    init(categories: [Category] = RuleManager.loadCategories()) {
+    nonisolated init(categories: [Category] = RuleManager.loadCategories()) {
         self.categories = categories
     }
 
-    func category(for url: URL) -> Category {
+    nonisolated func category(for url: URL) -> Category {
         let fileExtension = url.pathExtension.lowercased()
 
         if fileExtension == "app" || (url.hasDirectoryPath && url.lastPathComponent.hasSuffix(".app")) {
@@ -19,11 +19,11 @@ struct RuleManager {
         } ?? category(withID: Category.other.id) ?? .other
     }
 
-    private func category(withID id: String) -> Category? {
+    nonisolated private func category(withID id: String) -> Category? {
         categories.first { $0.id == id }
     }
 
-    private static func loadCategories() -> [Category] {
+    nonisolated private static func loadCategories() -> [Category] {
         guard let url = Bundle.main.url(forResource: "DefaultRules", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let rules = try? JSONDecoder().decode(DefaultRules.self, from: data) else {

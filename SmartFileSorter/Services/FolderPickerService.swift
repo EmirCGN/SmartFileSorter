@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 
 @MainActor
-struct FolderPickerService {
+struct FolderPickerService: FolderPicking {
     func pickFolder() -> URL? {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false

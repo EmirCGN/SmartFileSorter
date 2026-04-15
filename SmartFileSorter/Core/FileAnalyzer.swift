@@ -3,11 +3,11 @@ import Foundation
 struct FileAnalyzer {
     private let ruleManager: RuleManager
 
-    init(ruleManager: RuleManager = RuleManager()) {
+    nonisolated init(ruleManager: RuleManager = RuleManager()) {
         self.ruleManager = ruleManager
     }
 
-    func analyze(_ url: URL, settings: AppSettings) -> FileItem {
+    nonisolated func analyze(_ url: URL, settings: AppSettings) -> FileItem {
         let category = ruleManager.category(for: url)
         let status: FileStatus = category == .other && !settings.sortUnknownToOthers ? .skipped : .detected
 

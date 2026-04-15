@@ -22,9 +22,27 @@ struct SortProgress: Hashable {
     static let empty = SortProgress()
 }
 
-struct SortUndoAction: Identifiable, Hashable {
-    let id = UUID()
+struct SortUndoAction: Identifiable, Hashable, Codable {
+    let id: UUID
     let originalURL: URL
     let movedURL: URL
     let fileName: String
+    let originalBookmarkData: Data?
+    let movedBookmarkData: Data?
+
+    init(
+        id: UUID = UUID(),
+        originalURL: URL,
+        movedURL: URL,
+        fileName: String,
+        originalBookmarkData: Data? = nil,
+        movedBookmarkData: Data? = nil
+    ) {
+        self.id = id
+        self.originalURL = originalURL
+        self.movedURL = movedURL
+        self.fileName = fileName
+        self.originalBookmarkData = originalBookmarkData
+        self.movedBookmarkData = movedBookmarkData
+    }
 }
